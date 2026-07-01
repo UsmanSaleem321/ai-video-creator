@@ -117,7 +117,7 @@ class StoryGenerator:
 
     # ---------------------------------------------------------- generation
     @retry(max_attempts=2, delay_seconds=1.0)
-    def _generate_raw_text(self, prompt: str) -> str:
+    def _generate_raw_text(self, prompt: str, max_new_tokens: int) -> str:
         messages = [
             {"role": "system", "content": STORY_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -136,7 +136,7 @@ class StoryGenerator:
         with torch.no_grad():
             output_ids = self.model.generate(
                 input_ids,
-                max_new_tokens=self.config.story_max_new_tokens,
+                max_new_tokens=max_new_tokens,
                 temperature=self.config.story_temperature,
                 top_p=self.config.story_top_p,
                 do_sample=True,
@@ -151,9 +151,16 @@ class StoryGenerator:
         num_scenes = num_scenes or self.config.story_num_scenes
         self.load_model()
 
+        # Scale the generation budget with the requested scene count so
+        # long videos (many scenes) aren't silently truncated mid-story.
+        max_new_tokens = max(
+            self.config.story_max_new_tokens,
+            num_scenes * self.config.story_tokens_per_scene,
+        )
+
         prompt = build_story_prompt(theme, num_scenes)
         with timer("story generation inference", self.logger):
-            raw_text = self._generate_raw_text(prompt)
+            raw_text = self._generate_raw_text(prompt, max_new_tokens)
 
         scenes = self._parse_scenes(raw_text)
 
@@ -163,7 +170,7 @@ class StoryGenerator:
                 len(scenes),
             )
             simple_prompt = build_story_prompt(theme, num_scenes, simple=True)
-            raw_text = self._generate_raw_text(simple_prompt)
+            raw_text = self._generate_raw_text(simple_prompt, max_new_tokens)
             scenes = self._parse_scenes(raw_text)
 
         if not scenes:

@@ -101,6 +101,8 @@ class NarrationGenerator:
         paths: List[Path] = []
         for scene in tqdm(scenes, desc="Generating narration"):
             audio = self._synthesize(scene.narration)
+            if audio.dtype == np.float16:
+                audio = audio.astype(np.float32)
             out_path = self.config.narration_dir / f"scene_{scene.index:02d}.wav"
             sf.write(out_path, audio, self._sample_rate)
             paths.append(out_path)

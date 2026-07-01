@@ -67,6 +67,7 @@ class Config:
         "gpt2",
     )
     story_max_new_tokens: int = 1500
+    story_tokens_per_scene: int = 220  # used to scale the token budget for large num_scenes
     story_temperature: float = 0.85
     story_top_p: float = 0.92
     story_num_scenes: int = 6  # target within the 5-7 range
