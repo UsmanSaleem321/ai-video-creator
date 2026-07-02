@@ -146,6 +146,16 @@ class ImageGenerator:
         and character_store.attach_ip_adapter(self.pipe) BEFORE calling this
         method (kept separate from generate_images_for_scenes so the
         slideshow path's method stays untouched).
+
+        IMPORTANT: once IP-Adapter is attached to self.pipe, every single
+        call below must pass `ip_adapter_image` — diffusers only builds
+        `added_cond_kwargs` when that argument (or `ip_adapter_image_embeds`)
+        is present, but the UNet's attention processors are patched
+        pipe-wide to require it regardless, so omitting it for a scene with
+        no matched character crashes with `added_cond_kwargs` being `None`
+        inside `process_encoder_hidden_states()`. See
+        CharacterReferenceStore.resolve_ip_adapter_conditioning(), which
+        returns a neutral, zero-scale placeholder for exactly that case.
         """
         self.load_model()
         keyframe_paths: List[Path] = []
@@ -158,7 +168,6 @@ class ImageGenerator:
                 if extra_suffix:
                     style_suffix = f"{style_suffix}, {extra_suffix}" if style_suffix else extra_suffix
                 prompt = build_image_prompt(scene.visual, style=style, extra_suffix=style_suffix)
-                ip_images = character_store.references_for_scene(scene) if character_store else []
 
                 call_kwargs = dict(
                     prompt=prompt,
@@ -168,8 +177,10 @@ class ImageGenerator:
                     num_inference_steps=self.config.image_num_inference_steps,
                     guidance_scale=self.config.image_guidance_scale,
                 )
-                if ip_images:
-                    call_kwargs["ip_adapter_image"] = ip_images[0]
+                if character_store is not None:
+                    ip_image, ip_scale = character_store.resolve_ip_adapter_conditioning(scene)
+                    self.pipe.set_ip_adapter_scale(ip_scale)
+                    call_kwargs["ip_adapter_image"] = ip_image
 
                 with torch.autocast(self.config.device) if self.config.device == "cuda" else _null_context():
                     result = self.pipe(**call_kwargs)
