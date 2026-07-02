@@ -25,6 +25,8 @@ from modules.story_generator import StoryGenerator
 from modules.image_generator import ImageGenerator
 from modules.audio_generator import NarrationGenerator, MusicGenerator
 from modules.video_assembler import VideoAssembler
+from modules.video_generator import VideoGenerator
+from modules.character_consistency import CharacterReferenceStore
 
 
 def create_video(
@@ -126,6 +128,130 @@ def create_video(
     return video_path
 
 
+def create_cinematic_video(
+    theme: str,
+    output_name: Optional[str] = None,
+    style: str = "cinematic",
+    quality: str = "balanced",
+    num_scenes: Optional[int] = None,
+) -> Path:
+    """Cinematic pipeline: story+characters -> character refs -> per-scene
+    keyframes (IP-Adapter conditioned) -> per-scene video clips (SVD) ->
+    narration -> music -> real-clip assembly.
+
+    Mirrors create_video()'s "load, use, unload" per-stage discipline.
+    Keyframe generation and SVD generation are two separate load/unload
+    stages (all keyframes first, then all clips) so SD1.5+IP-Adapter and SVD
+    are never resident on the GPU at the same time.
+    """
+    config = Config()
+    config.quality_preset = quality
+    config._apply_quality_preset()
+    config.pipeline_mode = "cinematic"
+    logger = config.get_logger("main")
+
+    if not output_name:
+        output_name = f"{slugify(theme)}_cinematic.mp4"
+    if not output_name.endswith(".mp4"):
+        output_name += ".mp4"
+
+    logger.info("=" * 70)
+    logger.info("AI VIDEO CREATOR (cinematic mode)")
+    logger.info("Theme: %s", theme)
+    logger.info("Device: %s | FP16: %s | VRAM: %.1fGB", config.device, config.use_fp16, config.gpu_vram_gb)
+    logger.info("=" * 70)
+
+    # ------------------------------------------------- 1. story + characters
+    story_gen = StoryGenerator(config)
+    try:
+        with timer("STEP 1/6: Story + character generation", logger):
+            scenes, characters = story_gen.generate_story_with_characters(theme, num_scenes=num_scenes)
+        logger.info("Generated %d scenes, %d characters", len(scenes), len(characters))
+    except Exception:
+        logger.error("Story generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        story_gen.unload()
+        clear_gpu_memory()
+
+    # --------------------------------------- 2. character refs + keyframes
+    image_gen = ImageGenerator(config)
+    character_store = CharacterReferenceStore(config)
+    try:
+        with timer("STEP 2/6: Character references + keyframes", logger):
+            image_gen.load_model()
+            if characters:
+                character_store.generate_references(image_gen.pipe, characters)
+                character_store.attach_ip_adapter(image_gen.pipe)
+            keyframe_paths = image_gen.generate_keyframes_for_scenes(
+                scenes, style=style, character_store=character_store if characters else None
+            )
+        logger.info("Generated %d keyframes", len(keyframe_paths))
+    except Exception:
+        logger.error("Keyframe generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        character_store.unload()
+        image_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------- 3. video clips
+    video_gen = VideoGenerator(config)
+    try:
+        with timer("STEP 3/6: Scene video generation (Stable Video Diffusion)", logger):
+            clip_paths = video_gen.generate_clips_for_scenes(scenes, keyframe_paths)
+        logger.info("Generated %d video clips", len(clip_paths))
+    except Exception:
+        logger.error("Video generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        video_gen.unload()
+        clear_gpu_memory()
+
+    # ------------------------------------------------------- 4. narration
+    narration_gen = NarrationGenerator(config)
+    try:
+        with timer("STEP 4/6: Narration generation", logger):
+            narration_paths = narration_gen.generate_narration_for_scenes(scenes)
+        logger.info("Generated %d narration clips", len(narration_paths))
+    except Exception:
+        logger.error("Narration generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        narration_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------------- 5. music
+    music_gen = MusicGenerator(config)
+    try:
+        with timer("STEP 5/6: Background music generation", logger):
+            total_duration = len(scenes) * config.scene_duration_seconds
+            music_path = music_gen.generate_music(theme, duration=min(60.0, max(30.0, total_duration)))
+        logger.info("Generated background music: %s", music_path)
+    except Exception:
+        logger.error("Music generation failed, continuing without music:\n%s", traceback.format_exc())
+        music_path = None
+    finally:
+        music_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------------- 6. assemble
+    assembler = VideoAssembler(config)
+    with timer("STEP 6/6: Cinematic video assembly", logger):
+        video_path = assembler.assemble_cinematic(
+            scenes=scenes,
+            clip_paths=clip_paths,
+            narration_paths=narration_paths,
+            music_path=music_path,
+            output_name=output_name,
+        )
+
+    logger.info("=" * 70)
+    logger.info("DONE. Final cinematic video saved to: %s", video_path)
+    logger.info("=" * 70)
+    return video_path
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(description="Generate a cinematic AI video from a text theme.")
     parser.add_argument("--theme", required=True, help="Text theme/prompt to build the video around")
@@ -143,13 +269,24 @@ def _parse_args():
         help="Speed/quality trade-off preset",
     )
     parser.add_argument("--num-scenes", type=int, default=None, help="Override number of scenes (5-7 recommended)")
+    parser.add_argument(
+        "--mode",
+        default="slideshow",
+        choices=["slideshow", "cinematic"],
+        help=(
+            "slideshow: static images per scene (original pipeline). "
+            "cinematic: real short video clips per scene via SD1.5+IP-Adapter "
+            "character-consistent keyframes animated with Stable Video Diffusion."
+        ),
+    )
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
     try:
-        video_path = create_video(
+        pipeline_fn = create_cinematic_video if args.mode == "cinematic" else create_video
+        video_path = pipeline_fn(
             theme=args.theme,
             output_name=args.output,
             style=args.style,

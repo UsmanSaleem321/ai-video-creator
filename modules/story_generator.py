@@ -7,7 +7,7 @@ smaller models when GPU memory is insufficient to load the primary model.
 
 import re
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from tqdm.auto import tqdm
 
@@ -28,6 +28,15 @@ class Scene:
     index: int
     visual: str
     narration: str
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class Character:
+    name: str
+    description: str  # physical/visual description suitable for an SD prompt
 
     def to_dict(self):
         return asdict(self)
@@ -147,7 +156,24 @@ class StoryGenerator:
         return self.tokenizer.decode(generated, skip_special_tokens=True)
 
     def generate_story(self, theme: str, num_scenes: Optional[int] = None) -> List[Scene]:
-        """Generate a structured story and return it as a list of Scene objects."""
+        """Generate a structured story and return it as a list of Scene objects.
+
+        Thin wrapper around generate_story_with_characters() that drops the
+        character sheet, kept so the slideshow pipeline's call site and
+        return type never change.
+        """
+        scenes, _characters = self.generate_story_with_characters(theme, num_scenes=num_scenes)
+        return scenes
+
+    def generate_story_with_characters(
+        self, theme: str, num_scenes: Optional[int] = None
+    ) -> Tuple[List[Scene], List[Character]]:
+        """Generate a structured story plus a short recurring-character sheet.
+
+        Both come from the same generation call (one CHARACTERS block ahead
+        of the SCENE blocks) so there's no extra model inference cost versus
+        generate_story().
+        """
         num_scenes = num_scenes or self.config.story_num_scenes
         self.load_model()
 
@@ -163,6 +189,7 @@ class StoryGenerator:
             raw_text = self._generate_raw_text(prompt, max_new_tokens)
 
         scenes = self._parse_scenes(raw_text)
+        characters = self._parse_characters(raw_text)
 
         if len(scenes) < 3:
             self.logger.warning(
@@ -172,6 +199,7 @@ class StoryGenerator:
             simple_prompt = build_story_prompt(theme, num_scenes, simple=True)
             raw_text = self._generate_raw_text(simple_prompt, max_new_tokens)
             scenes = self._parse_scenes(raw_text)
+            characters = self._parse_characters(raw_text)
 
         if not scenes:
             scenes = self._fallback_scenes(theme, num_scenes)
@@ -179,12 +207,18 @@ class StoryGenerator:
         scenes = scenes[:num_scenes]
         for i, scene in enumerate(scenes, start=1):
             scene.index = i
+        characters = characters[: self.config.max_characters]
 
         save_json(
-            {"theme": theme, "model": self.loaded_model_name, "scenes": [s.to_dict() for s in scenes]},
+            {
+                "theme": theme,
+                "model": self.loaded_model_name,
+                "scenes": [s.to_dict() for s in scenes],
+                "characters": [c.to_dict() for c in characters],
+            },
             self.config.scenes_dir / "story.json",
         )
-        return scenes
+        return scenes, characters
 
     # -------------------------------------------------------------- parsing
     def _parse_scenes(self, text: str) -> List[Scene]:
@@ -208,6 +242,36 @@ class StoryGenerator:
             if visual and narration:
                 scenes.append(Scene(index=i, visual=visual, narration=narration))
         return scenes
+
+    def _parse_characters(self, text: str) -> List[Character]:
+        """Parse the `CHARACTERS: Name: description, Name: description` block.
+
+        Tolerant of "none"/absence (returns []) and of the model omitting
+        per-character descriptions.
+        """
+        match = re.search(r"CHARACTERS\s*:?\s*(?P<body>.*?)(?=SCENE\s*:?\s*\d*|\Z)", text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            return []
+        body = self._clean(match.group("body"))
+        if not body or body.lower() in {"none", "n/a", "none."}:
+            return []
+
+        # Split on commas that precede the next "Name:" entry (not on every
+        # comma, since a single character's description often contains
+        # commas of its own, e.g. "Aria: a tall, dark-haired pilot").
+        entries = re.split(r",\s*(?=[A-Z][\w\s'-]{0,40}:)", body)
+
+        characters: List[Character] = []
+        for entry in entries:
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            name, description = entry.split(":", 1)
+            name = name.strip().strip("*-• ")
+            description = description.strip()
+            if name and description:
+                characters.append(Character(name=name, description=description))
+        return characters
 
     @staticmethod
     def _clean(value: str) -> str:

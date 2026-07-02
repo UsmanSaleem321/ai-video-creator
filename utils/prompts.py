@@ -12,23 +12,32 @@ STORY_SYSTEM_PROMPT = (
 
 STORY_INSTRUCTION_TEMPLATE = """Write a short cinematic story based on this theme: "{theme}"
 
-Break the story into exactly {num_scenes} scenes. For EACH scene, output a block in exactly this format (plain text, no markdown, no numbering other than shown):
+First, output ONE character block in exactly this format:
+
+CHARACTERS: <comma-separated list of 0-3 recurring named characters in this story, each formatted as "Name: one-sentence physical description suitable for an image generator", or the single word "none" if there are no recurring named characters>
+
+Then break the story into exactly {num_scenes} scenes. For EACH scene, output a block in exactly this format (plain text, no markdown, no numbering other than shown):
 
 SCENE: <scene number>
 VISUAL: <a vivid, concrete visual description of what the camera sees, suitable for an image generation model - focus on subject, setting, lighting, composition, mood, no dialogue>
 NARRATION: <one to three sentences of narration text a voice actor would read aloud for this scene, written in an engaging storytelling voice>
 
 Rules:
+- Exactly one CHARACTERS block, before SCENE 1.
 - Exactly {num_scenes} SCENE blocks, numbered 1 to {num_scenes} in order.
 - Keep VISUAL descriptions self-contained (a reader should understand the scene without reading others).
 - Keep NARRATION concise: 15-40 words per scene.
 - Maintain a consistent tone, setting, and characters across all scenes so the story feels like one continuous narrative.
-- Do not include any text before SCENE 1 or after the final scene.
+- If a character from the CHARACTERS block appears in a scene, mention them by name in that scene's VISUAL and/or NARRATION text.
+- Do not include any text before the CHARACTERS block or after the final scene.
 """
 
 # Fallback template for smaller / less instruction-tuned models that struggle
 # with the full instruction above.
 STORY_SIMPLE_TEMPLATE = """Theme: {theme}
+
+First write one line:
+CHARACTERS: <name: description, ...> or "none"
 
 Write {num_scenes} short scenes for a video. For each scene write:
 SCENE: <number>
@@ -61,6 +70,17 @@ def build_story_prompt(theme: str, num_scenes: int, simple: bool = False) -> str
 def build_image_prompt(visual_description: str, style: str = "cinematic", extra_suffix: str = "") -> str:
     style_text = IMAGE_STYLE_PRESETS.get(style, IMAGE_STYLE_PRESETS["cinematic"])
     parts = [visual_description.strip(), style_text]
+    if extra_suffix:
+        parts.append(extra_suffix.strip())
+    return ", ".join(p for p in parts if p)
+
+
+def build_character_portrait_prompt(description: str, extra_suffix: str = "") -> str:
+    parts = [
+        description.strip(),
+        "portrait, consistent character design, plain neutral background, "
+        "front-facing, highly detailed, cinematic lighting",
+    ]
     if extra_suffix:
         parts.append(extra_suffix.strip())
     return ", ".join(p for p in parts if p)

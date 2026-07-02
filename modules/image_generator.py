@@ -123,6 +123,54 @@ class ImageGenerator:
 
         return image_paths
 
+    def generate_keyframes_for_scenes(
+        self,
+        scenes: List,
+        style: str = "cinematic",
+        character_store=None,
+        seed: Optional[int] = None,
+    ) -> List[Path]:
+        """Like generate_images_for_scenes, but conditions each scene on a
+        matching character reference (via IP-Adapter) when `character_store`
+        is provided. Produces one keyframe PNG per scene at
+        config.image_width x config.image_height (resized later for SVD).
+
+        Caller is responsible for calling character_store.generate_references()
+        and character_store.attach_ip_adapter(self.pipe) BEFORE calling this
+        method (kept separate from generate_images_for_scenes so the
+        slideshow path's method stays untouched).
+        """
+        self.load_model()
+        keyframe_paths: List[Path] = []
+        negative_prompt = self.config.image_negative_prompt
+
+        with tqdm(total=len(scenes), desc="Generating keyframes") as pbar:
+            for scene in scenes:
+                prompt = build_image_prompt(scene.visual, style=style, extra_suffix=self.config.image_style_suffix)
+                ip_images = character_store.references_for_scene(scene) if character_store else []
+
+                call_kwargs = dict(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=self.config.image_width,
+                    height=self.config.image_height,
+                    num_inference_steps=self.config.image_num_inference_steps,
+                    guidance_scale=self.config.image_guidance_scale,
+                )
+                if ip_images:
+                    call_kwargs["ip_adapter_image"] = ip_images[0]
+
+                with torch.autocast(self.config.device) if self.config.device == "cuda" else _null_context():
+                    result = self.pipe(**call_kwargs)
+
+                out_path = self.config.images_dir / f"scene_{scene.index:02d}_keyframe.png"
+                result.images[0].save(out_path)
+                keyframe_paths.append(out_path)
+                pbar.update(1)
+                clear_gpu_memory()
+
+        return keyframe_paths
+
     def generate_preview(self, scene, style: str = "cinematic") -> Path:
         """Fast, low-res preview render for quick iteration before a full-quality pass."""
         self.load_model()

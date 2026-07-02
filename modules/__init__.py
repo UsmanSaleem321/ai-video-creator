@@ -1,4 +1,4 @@
-from .story_generator import StoryGenerator, Scene, generate_story_scenes
+from .story_generator import StoryGenerator, Scene, Character, generate_story_scenes
 from .image_generator import ImageGenerator, generate_scene_images
 from .audio_generator import (
     NarrationGenerator,
@@ -7,10 +7,13 @@ from .audio_generator import (
     generate_background_music,
 )
 from .video_assembler import VideoAssembler, assemble_final_video
+from .video_generator import VideoGenerator
+from .character_consistency import CharacterReferenceStore
 
 __all__ = [
     "StoryGenerator",
     "Scene",
+    "Character",
     "generate_story_scenes",
     "ImageGenerator",
     "generate_scene_images",
@@ -20,4 +23,6 @@ __all__ = [
     "generate_background_music",
     "VideoAssembler",
     "assemble_final_video",
+    "VideoGenerator",
+    "CharacterReferenceStore",
 ]

@@ -47,6 +47,8 @@ class Config:
     output_dir: Path = field(init=False)
     scenes_dir: Path = field(init=False)
     images_dir: Path = field(init=False)
+    characters_dir: Path = field(init=False)
+    clips_dir: Path = field(init=False)
     audio_dir: Path = field(init=False)
     narration_dir: Path = field(init=False)
     music_dir: Path = field(init=False)
@@ -120,6 +122,37 @@ class Config:
     # ------------------------------------------------------------- quality
     quality_preset: str = "balanced"  # "draft" | "balanced" | "high"
 
+    # ------------------------------------------------------------- pipeline mode
+    pipeline_mode: str = "slideshow"  # "slideshow" (static images) | "cinematic" (real motion clips)
+
+    # --------------------------------------------------- character consistency (IP-Adapter)
+    ip_adapter_repo: str = "h94/IP-Adapter"
+    ip_adapter_subfolder: str = "models"
+    ip_adapter_weight_name: str = "ip-adapter_sd15.bin"
+    ip_adapter_scale: float = 0.6  # 0.0-1.0; balances identity vs prompt adherence
+    character_ref_width: int = 512
+    character_ref_height: int = 512
+    character_ref_steps: int = 30
+    max_characters: int = 3  # cap on character reference portraits generated per story
+
+    # ------------------------------------------------------- video generation (SVD)
+    svd_model: str = "stabilityai/stable-video-diffusion-img2vid-xt"
+    svd_model_fallback: str = "stabilityai/stable-video-diffusion-img2vid"  # 14-frame, lighter
+    svd_width: int = 1024
+    svd_height: int = 576  # SVD's trained resolution; keyframes are resized to this before SVD
+    svd_num_frames: int = 25  # informational (clip-duration estimation); not passed to the pipeline call
+    svd_num_inference_steps: int = 25
+    svd_fps: int = 7  # SVD's native/trained fps
+    svd_motion_bucket_id: int = 100  # below the diffusers default (127) for subtler, controlled motion
+    svd_noise_aug_strength: float = 0.02
+    svd_decode_chunk_size: int = 4  # conservative for T4; lower = less VRAM, more flicker risk
+    svd_min_guidance_scale: float = 1.0
+    svd_max_guidance_scale: float = 3.0
+    svd_enable_forward_chunking: bool = True
+
+    # ------------------------------------------------- cinematic transitions
+    cinematic_transition_zoom_amount: float = 0.06  # fractional zoom over the transition window
+
     # ------------------------------------------------------------- logging
     log_level: str = os.getenv("AVC_LOG_LEVEL", "INFO")
 
@@ -130,6 +163,8 @@ class Config:
         self.output_dir = Path(os.getenv("AVC_OUTPUT_DIR", self.base_dir / "output"))
         self.scenes_dir = self.output_dir / "scenes"
         self.images_dir = self.output_dir / "images"
+        self.characters_dir = self.output_dir / "characters"
+        self.clips_dir = self.output_dir / "clips"
         self.audio_dir = self.output_dir / "audio"
         self.narration_dir = self.audio_dir / "narration"
         self.music_dir = self.audio_dir / "music"
@@ -164,12 +199,17 @@ class Config:
             self.story_load_in_4bit = True
             self.image_enable_attention_slicing = True
             self.image_enable_vae_slicing = True
+            self.svd_model = self.svd_model_fallback  # switch to the lighter 14-frame base SVD
+            self.svd_decode_chunk_size = min(self.svd_decode_chunk_size, 2)
+            self.svd_num_inference_steps = min(self.svd_num_inference_steps, 20)
 
     def create_directories(self):
         for d in (
             self.output_dir,
             self.scenes_dir,
             self.images_dir,
+            self.characters_dir,
+            self.clips_dir,
             self.audio_dir,
             self.narration_dir,
             self.music_dir,
