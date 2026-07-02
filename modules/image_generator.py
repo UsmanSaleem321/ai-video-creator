@@ -128,12 +128,19 @@ class ImageGenerator:
         scenes: List,
         style: str = "cinematic",
         character_store=None,
+        extra_prompt_suffixes: Optional[List[str]] = None,
         seed: Optional[int] = None,
     ) -> List[Path]:
         """Like generate_images_for_scenes, but conditions each scene on a
         matching character reference (via IP-Adapter) when `character_store`
         is provided. Produces one keyframe PNG per scene at
         config.image_width x config.image_height (resized later for SVD).
+
+        `extra_prompt_suffixes`, if given, is a list index-aligned with
+        `scenes` — e.g. an action preset's descriptive text (see
+        modules.motion_controller.ActionPlan.prompt_suffix) — appended to
+        that scene's prompt so the keyframe itself depicts the action the
+        video-generation stage will later add camera motion to.
 
         Caller is responsible for calling character_store.generate_references()
         and character_store.attach_ip_adapter(self.pipe) BEFORE calling this
@@ -143,10 +150,14 @@ class ImageGenerator:
         self.load_model()
         keyframe_paths: List[Path] = []
         negative_prompt = self.config.image_negative_prompt
+        extra_prompt_suffixes = extra_prompt_suffixes or [""] * len(scenes)
 
         with tqdm(total=len(scenes), desc="Generating keyframes") as pbar:
-            for scene in scenes:
-                prompt = build_image_prompt(scene.visual, style=style, extra_suffix=self.config.image_style_suffix)
+            for scene, extra_suffix in zip(scenes, extra_prompt_suffixes):
+                style_suffix = self.config.image_style_suffix
+                if extra_suffix:
+                    style_suffix = f"{style_suffix}, {extra_suffix}" if style_suffix else extra_suffix
+                prompt = build_image_prompt(scene.visual, style=style, extra_suffix=style_suffix)
                 ip_images = character_store.references_for_scene(scene) if character_store else []
 
                 call_kwargs = dict(

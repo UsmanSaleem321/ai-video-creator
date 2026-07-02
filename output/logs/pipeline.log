@@ -1,0 +1,64 @@
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: pan_left
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: pan_left (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: pan_right
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: pan_right (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: zoom_in
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: zoom_in (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: zoom_out
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: zoom_out (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: dolly_zoom
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: dolly_zoom (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: orbit
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: orbit (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: crane_up
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: crane_up (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: crane_down
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: crane_down (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: tracking_shot
+16:15:30 | INFO     | motion_controller | <- finished: camera motion: tracking_shot (0.0s)
+16:15:30 | INFO     | motion_controller | -> starting: camera motion: dynamic_tracking
+16:15:31 | INFO     | motion_controller | <- finished: camera motion: dynamic_tracking (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: walk_forward
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: walk_forward (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: run_forward
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: run_forward (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: fly_up
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: fly_up (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: fly_down
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: fly_down (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: jump
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: jump (0.0s)
+16:15:31 | INFO     | motion_controller | -> starting: subject motion: rotate
+16:15:31 | INFO     | motion_controller | <- finished: subject motion: rotate (0.1s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: pan_left
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: pan_left (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: pan_right
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: pan_right (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: zoom_in
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: zoom_in (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: zoom_out
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: zoom_out (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: dolly_zoom
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: dolly_zoom (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: orbit
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: orbit (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: crane_up
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: crane_up (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: crane_down
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: crane_down (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: tracking_shot
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: tracking_shot (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: camera motion: dynamic_tracking
+16:17:56 | INFO     | motion_controller | <- finished: camera motion: dynamic_tracking (0.0s)
+16:17:56 | INFO     | motion_controller | -> starting: subject motion: walk_forward
+16:17:56 | INFO     | motion_controller | <- finished: subject motion: walk_forward (0.0s)
+16:17:57 | INFO     | motion_controller | -> starting: subject motion: run_forward
+16:17:57 | INFO     | motion_controller | <- finished: subject motion: run_forward (0.0s)
+16:17:57 | INFO     | motion_controller | -> starting: subject motion: fly_up
+16:17:57 | INFO     | motion_controller | <- finished: subject motion: fly_up (0.0s)
+16:17:57 | INFO     | motion_controller | -> starting: subject motion: fly_down
+16:17:57 | INFO     | motion_controller | <- finished: subject motion: fly_down (0.0s)
+16:17:57 | INFO     | motion_controller | -> starting: subject motion: jump
+16:17:57 | INFO     | motion_controller | <- finished: subject motion: jump (0.0s)
+16:17:57 | INFO     | motion_controller | -> starting: subject motion: rotate
+16:17:57 | INFO     | motion_controller | <- finished: subject motion: rotate (0.1s)

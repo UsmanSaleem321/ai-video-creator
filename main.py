@@ -17,7 +17,7 @@ import argparse
 import sys
 import traceback
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from config import Config
 from utils.helpers import clear_gpu_memory, timer, slugify
@@ -27,6 +27,7 @@ from modules.audio_generator import NarrationGenerator, MusicGenerator
 from modules.video_assembler import VideoAssembler
 from modules.video_generator import VideoGenerator
 from modules.character_consistency import CharacterReferenceStore
+from modules.motion_controller import MotionController
 
 
 def create_video(
@@ -128,6 +129,29 @@ def create_video(
     return video_path
 
 
+def _resolve_scene_motion(motion_controller: MotionController, scene) -> Tuple[Optional[dict], Optional[str], Optional[object], str]:
+    """Translate a Scene's LLM-tagged `motion` name (see utils/prompts.py's
+    MOTION: field and story_generator.StoryGenerator._normalize_motion) into
+    the knobs modules/video_generator.py and modules/image_generator.py
+    actually take: an SVD motion_hint (intensity), a post-generation
+    camera_motion_type OR action_plan (direction/content), and a prompt
+    suffix (action presets only, so the keyframe itself depicts the action
+    rather than just having camera motion added on top of an unrelated
+    image).
+
+    Returns (motion_hint, camera_motion_type, action_plan, prompt_suffix).
+    """
+    motion_name = getattr(scene, "motion", "none") or "none"
+    if motion_name == "none":
+        return None, None, None, ""
+    if motion_name in motion_controller.ACTION_SEQUENCES:
+        plan = motion_controller.create_action_sequence(scene.visual, action_type=motion_name)
+        return plan.motion_hint, None, plan, plan.prompt_suffix
+    if motion_name in motion_controller.CAMERA_MOTIONS or motion_name in motion_controller.SUBJECT_MOTIONS:
+        return motion_controller.resolve_motion_hint(motion_name), motion_name, None, ""
+    return None, None, None, ""
+
+
 def create_cinematic_video(
     theme: str,
     output_name: Optional[str] = None,
@@ -174,7 +198,25 @@ def create_cinematic_video(
         story_gen.unload()
         clear_gpu_memory()
 
-    # --------------------------------------- 2. character refs + keyframes
+    # ---------------------------------------------------- 2a. motion planning
+    # Resolve each scene's LLM-tagged MOTION preset (see utils/prompts.py)
+    # into: an SVD intensity hint, a post-generation camera/subject motion
+    # name or action plan, and (for action presets only) a prompt suffix so
+    # the keyframe itself depicts the action.
+    motion_controller = MotionController(config)
+    motion_hints, camera_motion_types, action_plans, motion_prompt_suffixes = [], [], [], []
+    for scene in scenes:
+        hint, cam_type, plan, suffix = _resolve_scene_motion(motion_controller, scene)
+        motion_hints.append(hint)
+        camera_motion_types.append(cam_type)
+        action_plans.append(plan)
+        motion_prompt_suffixes.append(suffix)
+    logger.info(
+        "Scene motion presets: %s",
+        ", ".join(f"{s.index}={s.motion}" for s in scenes),
+    )
+
+    # --------------------------------------- 2b. character refs + keyframes
     image_gen = ImageGenerator(config)
     character_store = CharacterReferenceStore(config)
     try:
@@ -184,7 +226,10 @@ def create_cinematic_video(
                 character_store.generate_references(image_gen.pipe, characters)
                 character_store.attach_ip_adapter(image_gen.pipe)
             keyframe_paths = image_gen.generate_keyframes_for_scenes(
-                scenes, style=style, character_store=character_store if characters else None
+                scenes,
+                style=style,
+                character_store=character_store if characters else None,
+                extra_prompt_suffixes=motion_prompt_suffixes,
             )
         logger.info("Generated %d keyframes", len(keyframe_paths))
     except Exception:
@@ -199,7 +244,14 @@ def create_cinematic_video(
     video_gen = VideoGenerator(config)
     try:
         with timer("STEP 3/6: Scene video generation (Stable Video Diffusion)", logger):
-            clip_paths = video_gen.generate_clips_for_scenes(scenes, keyframe_paths)
+            clip_paths = video_gen.generate_clips_for_scenes(
+                scenes,
+                keyframe_paths,
+                motion_hints=motion_hints,
+                camera_motion_types=camera_motion_types,
+                action_plans=action_plans,
+                motion_controller=motion_controller,
+            )
         logger.info("Generated %d video clips", len(clip_paths))
     except Exception:
         logger.error("Video generation failed:\n%s", traceback.format_exc())

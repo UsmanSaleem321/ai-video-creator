@@ -21,12 +21,16 @@ Then break the story into exactly {num_scenes} scenes. For EACH scene, output a 
 SCENE: <scene number>
 VISUAL: <a vivid, concrete visual description of what the camera sees, suitable for an image generation model - focus on subject, setting, lighting, composition, mood, no dialogue>
 NARRATION: <one to three sentences of narration text a voice actor would read aloud for this scene, written in an engaging storytelling voice>
+MOTION: <exactly one word from this list, whichever best fits the scene: none, pan_left, pan_right, zoom_in, zoom_out, dolly_zoom, orbit, crane_up, crane_down, tracking_shot, dynamic_tracking, walk_forward, run_forward, fly_up, fly_down, jump, rotate, fight, chase, explosion, fly_through>
+
+MOTION guidance: use "none" for a calm/static shot; a camera-motion word (pan_left, pan_right, zoom_in, zoom_out, dolly_zoom, orbit, crane_up, crane_down, tracking_shot, dynamic_tracking) for a shot that needs dramatic camera movement; a subject-motion word (walk_forward, run_forward, fly_up, fly_down, jump, rotate) when a character or object is the one moving; or fight/chase/explosion/fly_through only for a scene that IS that action beat.
 
 Rules:
 - Exactly one CHARACTERS block, before SCENE 1.
 - Exactly {num_scenes} SCENE blocks, numbered 1 to {num_scenes} in order.
 - Keep VISUAL descriptions self-contained (a reader should understand the scene without reading others).
 - Keep NARRATION concise: 15-40 words per scene.
+- MOTION must be exactly one word from the list above, nothing else.
 - Maintain a consistent tone, setting, and characters across all scenes so the story feels like one continuous narrative.
 - If a character from the CHARACTERS block appears in a scene, mention them by name in that scene's VISUAL and/or NARRATION text.
 - Do not include any text before the CHARACTERS block or after the final scene.
@@ -43,6 +47,7 @@ Write {num_scenes} short scenes for a video. For each scene write:
 SCENE: <number>
 VISUAL: <what we see>
 NARRATION: <what the narrator says>
+MOTION: <one word: none, pan_left, pan_right, zoom_in, zoom_out, dolly_zoom, orbit, crane_up, crane_down, tracking_shot, dynamic_tracking, walk_forward, run_forward, fly_up, fly_down, jump, rotate, fight, chase, explosion, or fly_through>
 """
 
 # Visual style modifiers appended to every image prompt to keep art direction

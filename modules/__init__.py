@@ -9,6 +9,7 @@ from .audio_generator import (
 from .video_assembler import VideoAssembler, assemble_final_video
 from .video_generator import VideoGenerator
 from .character_consistency import CharacterReferenceStore
+from .motion_controller import MotionController, ActionPlan
 
 __all__ = [
     "StoryGenerator",
@@ -25,4 +26,6 @@ __all__ = [
     "assemble_final_video",
     "VideoGenerator",
     "CharacterReferenceStore",
+    "MotionController",
+    "ActionPlan",
 ]

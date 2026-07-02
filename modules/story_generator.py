@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 from config import Config
 from utils.helpers import clear_gpu_memory, timer, retry, save_json
 from utils.prompts import STORY_SYSTEM_PROMPT, build_story_prompt
+from modules.motion_controller import ALL_MOTION_PRESET_NAMES
 
 try:
     import torch
@@ -28,6 +29,7 @@ class Scene:
     index: int
     visual: str
     narration: str
+    motion: str = "none"  # a modules.motion_controller preset name, or "none"
 
     def to_dict(self):
         return asdict(self)
@@ -231,7 +233,8 @@ class StoryGenerator:
         pattern = re.compile(
             r"SCENE\s*:?\s*\d*\s*"
             r"VISUAL\s*:?\s*(?P<visual>.*?)\s*"
-            r"NARRATION\s*:?\s*(?P<narration>.*?)"
+            r"NARRATION\s*:?\s*(?P<narration>.*?)\s*"
+            r"(?:MOTION\s*:?\s*(?P<motion>.*?)\s*)?"
             r"(?=SCENE\s*:?\s*\d*|\Z)",
             re.IGNORECASE | re.DOTALL,
         )
@@ -239,9 +242,27 @@ class StoryGenerator:
         for i, match in enumerate(pattern.finditer(text), start=1):
             visual = self._clean(match.group("visual"))
             narration = self._clean(match.group("narration"))
+            motion = self._normalize_motion(match.group("motion"))
             if visual and narration:
-                scenes.append(Scene(index=i, visual=visual, narration=narration))
+                scenes.append(Scene(index=i, visual=visual, narration=narration, motion=motion))
         return scenes
+
+    @staticmethod
+    def _normalize_motion(raw: Optional[str]) -> str:
+        """Map raw MOTION: text to a known modules.motion_controller preset
+        name, tolerant of case/punctuation drift; falls back to "none"
+        (no extra motion applied) rather than raising on unrecognized text,
+        consistent with this parser's tolerant-degrade-gracefully approach.
+        """
+        if not raw:
+            return "none"
+        candidate = re.sub(r"[\s-]+", "_", raw.strip().strip("*.").lower())
+        if candidate in ALL_MOTION_PRESET_NAMES:
+            return candidate
+        for name in ALL_MOTION_PRESET_NAMES:
+            if name != "none" and name in candidate:
+                return name
+        return "none"
 
     def _parse_characters(self, text: str) -> List[Character]:
         """Parse the `CHARACTERS: Name: description, Name: description` block.
