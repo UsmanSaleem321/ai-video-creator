@@ -150,6 +150,52 @@ class Config:
     svd_max_guidance_scale: float = 3.0
     svd_enable_forward_chunking: bool = True
 
+    # ------------------------------------------------------ video generation (CogVideoX)
+    cogvideo_model: str = "THUDM/CogVideoX-2b"
+    cogvideo_enable_fallback: bool = True
+    cogvideo_negative_prompt: str = (
+        "low quality, blurry, distorted, flickering, jittery, watermark, text, "
+        "logo, bad anatomy, deformed, disfigured, inconsistent character"
+    )
+    cogvideo_quality_presets: dict = field(
+        default_factory=lambda: {
+            "draft": {
+                "duration": 2,
+                "num_frames": 16,
+                "num_inference_steps": 25,
+                "guidance_scale": 5.5,
+                "width": 512,
+                "height": 512,
+                "fps": 8,
+            },
+            "balanced": {
+                "duration": 3,
+                "num_frames": 24,
+                "num_inference_steps": 50,
+                "guidance_scale": 6.0,
+                "width": 768,
+                "height": 768,
+                "fps": 8,
+            },
+            "high": {
+                "duration": 5,
+                "num_frames": 40,
+                "num_inference_steps": 50,
+                "guidance_scale": 6.5,
+                "width": 1024,
+                "height": 1024,
+                "fps": 8,
+            },
+        }
+    )
+    cogvideo_duration_seconds: int = 3
+    cogvideo_num_frames: int = 24
+    cogvideo_num_inference_steps: int = 50
+    cogvideo_guidance_scale: float = 6.0
+    cogvideo_width: int = 768
+    cogvideo_height: int = 768
+    cogvideo_fps: int = 8
+
     # ------------------------------------------------- cinematic transitions
     cinematic_transition_zoom_amount: float = 0.06  # fractional zoom over the transition window
 
@@ -177,6 +223,17 @@ class Config:
 
     def _apply_quality_preset(self):
         """Adjust speed/quality trade-off knobs based on the chosen preset."""
+        cogvideo_preset = self.cogvideo_quality_presets.get(
+            self.quality_preset, self.cogvideo_quality_presets["balanced"]
+        )
+        self.cogvideo_duration_seconds = cogvideo_preset["duration"]
+        self.cogvideo_num_frames = cogvideo_preset["num_frames"]
+        self.cogvideo_num_inference_steps = cogvideo_preset["num_inference_steps"]
+        self.cogvideo_guidance_scale = cogvideo_preset["guidance_scale"]
+        self.cogvideo_width = cogvideo_preset["width"]
+        self.cogvideo_height = cogvideo_preset["height"]
+        self.cogvideo_fps = cogvideo_preset["fps"]
+
         if self.quality_preset == "draft":
             self.image_num_inference_steps = 15
             self.music_steps = 50
@@ -202,6 +259,10 @@ class Config:
             self.svd_model = self.svd_model_fallback  # switch to the lighter 14-frame base SVD
             self.svd_decode_chunk_size = min(self.svd_decode_chunk_size, 2)
             self.svd_num_inference_steps = min(self.svd_num_inference_steps, 20)
+            self.cogvideo_num_inference_steps = min(self.cogvideo_num_inference_steps, 25)
+            self.cogvideo_width = min(self.cogvideo_width, 512)
+            self.cogvideo_height = min(self.cogvideo_height, 512)
+            self.cogvideo_num_frames = min(self.cogvideo_num_frames, 16)
 
     def create_directories(self):
         for d in (

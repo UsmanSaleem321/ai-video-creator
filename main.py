@@ -304,6 +304,142 @@ def create_cinematic_video(
     return video_path
 
 
+def create_cogvideo_video(
+    theme: str,
+    output_name: Optional[str] = None,
+    style: str = "cinematic",
+    quality: str = "balanced",
+    num_scenes: Optional[int] = None,
+) -> Path:
+    """Natural text-to-video pipeline using CogVideoX scene clips.
+
+    Pipeline: story+characters -> CogVideoX text-to-video clips -> narration
+    -> music -> existing cinematic assembly. If CogVideoX cannot load or
+    generate clips (missing dependency, OOM, model error), this falls back to
+    the existing SVD cinematic mode, then to slideshow mode.
+    """
+    config = Config()
+    config.quality_preset = quality
+    config._apply_quality_preset()
+    config.pipeline_mode = "cogvideo"
+    logger = config.get_logger("main")
+
+    if not output_name:
+        output_name = f"{slugify(theme)}_cogvideo.mp4"
+    if not output_name.endswith(".mp4"):
+        output_name += ".mp4"
+
+    logger.info("=" * 70)
+    logger.info("AI VIDEO CREATOR (CogVideoX mode)")
+    logger.info("Theme: %s", theme)
+    logger.info("Device: %s | FP16: %s | VRAM: %.1fGB", config.device, config.use_fp16, config.gpu_vram_gb)
+    logger.info("=" * 70)
+
+    # ------------------------------------------------- 1. story + characters
+    story_gen = StoryGenerator(config)
+    try:
+        with timer("STEP 1/5: Story + character generation", logger):
+            scenes, characters = story_gen.generate_story_with_characters(theme, num_scenes=num_scenes)
+        logger.info("Generated %d scenes, %d characters", len(scenes), len(characters))
+    except Exception:
+        logger.error("Story generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        story_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------- 2. video clips
+    try:
+        from modules.cogvideo_generator import CogVideoGenerator
+
+        cogvideo_gen = CogVideoGenerator(config=config, quality=quality)
+        try:
+            with timer("STEP 2/5: Scene video generation (CogVideoX)", logger):
+                clip_paths = cogvideo_gen.generate_scene_videos(
+                    scenes,
+                    style=style,
+                    characters=characters,
+                    duration=config.cogvideo_duration_seconds,
+                )
+            logger.info("Generated %d CogVideoX video clips", len(clip_paths))
+        finally:
+            cogvideo_gen.unload()
+            clear_gpu_memory()
+    except Exception as cogvideo_exc:  # noqa: BLE001
+        logger.error("CogVideoX generation failed:\n%s", traceback.format_exc())
+        if not config.cogvideo_enable_fallback:
+            raise
+
+        logger.warning(
+            "Falling back to Stable Video Diffusion cinematic mode after CogVideoX failure: %s",
+            cogvideo_exc,
+        )
+        try:
+            return create_cinematic_video(
+                theme=theme,
+                output_name=output_name,
+                style=style,
+                quality=quality,
+                num_scenes=num_scenes,
+            )
+        except Exception as svd_exc:  # noqa: BLE001
+            logger.error("Stable Video Diffusion fallback failed:\n%s", traceback.format_exc())
+            logger.warning(
+                "Falling back to slideshow mode after SVD failure: %s",
+                svd_exc,
+            )
+            return create_video(
+                theme=theme,
+                output_name=output_name,
+                style=style,
+                quality=quality,
+                num_scenes=num_scenes,
+            )
+
+    # ------------------------------------------------------- 3. narration
+    narration_gen = NarrationGenerator(config)
+    try:
+        with timer("STEP 3/5: Narration generation", logger):
+            narration_paths = narration_gen.generate_narration_for_scenes(scenes)
+        logger.info("Generated %d narration clips", len(narration_paths))
+    except Exception:
+        logger.error("Narration generation failed:\n%s", traceback.format_exc())
+        raise
+    finally:
+        narration_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------------- 4. music
+    music_gen = MusicGenerator(config)
+    try:
+        with timer("STEP 4/5: Background music generation", logger):
+            total_duration = len(scenes) * config.scene_duration_seconds
+            music_path = music_gen.generate_music(theme, duration=min(60.0, max(30.0, total_duration)))
+        logger.info("Generated background music: %s", music_path)
+    except Exception:
+        logger.error("Music generation failed, continuing without music:\n%s", traceback.format_exc())
+        music_path = None
+    finally:
+        music_gen.unload()
+        clear_gpu_memory()
+
+    # ----------------------------------------------------------- 5. assemble
+    assembler = VideoAssembler(config)
+    with timer("STEP 5/5: CogVideoX video assembly", logger):
+        video_path = assembler.assemble_cinematic(
+            scenes=scenes,
+            clip_paths=clip_paths,
+            narration_paths=narration_paths,
+            music_path=music_path,
+            output_name=output_name,
+        )
+
+    logger.info("=" * 70)
+    logger.info("DONE. Final CogVideoX video saved to: %s", video_path)
+    logger.info("=" * 70)
+    return video_path
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(description="Generate a cinematic AI video from a text theme.")
     parser.add_argument("--theme", required=True, help="Text theme/prompt to build the video around")
@@ -324,11 +460,13 @@ def _parse_args():
     parser.add_argument(
         "--mode",
         default="slideshow",
-        choices=["slideshow", "cinematic"],
+        choices=["slideshow", "cinematic", "cogvideo"],
         help=(
             "slideshow: static images per scene (original pipeline). "
             "cinematic: real short video clips per scene via SD1.5+IP-Adapter "
-            "character-consistent keyframes animated with Stable Video Diffusion."
+            "character-consistent keyframes animated with Stable Video Diffusion. "
+            "cogvideo: natural text-to-video clips per scene via THUDM/CogVideoX-2b, "
+            "with SVD and slideshow fallbacks."
         ),
     )
     return parser.parse_args()
@@ -337,7 +475,12 @@ def _parse_args():
 def main():
     args = _parse_args()
     try:
-        pipeline_fn = create_cinematic_video if args.mode == "cinematic" else create_video
+        if args.mode == "cogvideo":
+            pipeline_fn = create_cogvideo_video
+        elif args.mode == "cinematic":
+            pipeline_fn = create_cinematic_video
+        else:
+            pipeline_fn = create_video
         video_path = pipeline_fn(
             theme=args.theme,
             output_name=args.output,

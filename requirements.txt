@@ -10,6 +10,7 @@ diffusers>=0.30.0
 accelerate>=0.27.0
 bitsandbytes>=0.42.0
 peft>=0.9.0
+git+https://github.com/THUDM/CogVideo.git
 
 # Memory-efficient attention. Colab's default runtime does NOT have this
 # preinstalled; it meaningfully lowers peak VRAM for both the SD1.5+IP-Adapter
@@ -27,6 +28,7 @@ pydub>=0.25.1
 # Video
 moviepy>=1.0.3
 imageio-ffmpeg>=0.4.9  # ffmpeg binary for moviepy; Colab's system ffmpeg is not always picked up by pip-installed moviepy
+decord>=0.6.0
 
 # Hugging Face / model management
 huggingface_hub>=0.20.0
